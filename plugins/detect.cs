@@ -19,7 +19,8 @@ namespace QRCodeDetection{
         private VideoCapture capture; // EmguCV Class for VideoCapture
         private PictureBox displayBox;
         private BarcodeDetector detector; // EmguCV Class for QRDetection
-        private Thread captureThread;
+        private Thread captureThread; // Thread for running video capture loop
+        private bool isRunning = true; 
     public QRDetection(){
     capture = new VideoCapture;
     displayBox = new PictureBox{
@@ -29,6 +30,45 @@ namespace QRCodeDetection{
     }
 
     }
+    private void CaptureLoop()
+        {
+            while (isRunning) // Continue while the plugin is running
+            {
+                // Capture a frame from the camera
+                Mat frame = capture.QueryFrame();
+
+                if (frame != null) // Ensure a frame was captured
+                {
+                    // Detect and decode QR codes in the frame
+                    VectorOfCvString codes = new VectorOfCvString();
+                    VectorOfInt types = new VectorOfInt();
+                    Mat points = new Mat();
+                    detector.DetectAndDecode(frame, codes, types, points);
+
+                    // Optionally, draw rectangles around detected QR codes
+                    for (int i = 0; i < points.Rows; i++)
+                    {
+                        PointF[] point = points.GetArray(i);
+                        // You can use EmguCV drawing functions here, e.g., CvInvoke.Rectangle
+                    }
+
+                    // Update the PictureBox with the latest frame
+                    // Use BeginInvoke to ensure UI updates are on the main thread
+                    MainV2.instance.BeginInvoke((MethodInvoker)delegate
+                    {
+                        displayBox.Image = frame.Bitmap;
+                    });
+                }
+
+            }
+        }
+        public override bool Exit()
+        {
+            isRunning = false;
+            captureThread.Join();
+            capture.Dispose();
+            return true;
+        }
     }
 }
     
