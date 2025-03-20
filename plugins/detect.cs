@@ -21,33 +21,42 @@ namespace QRCodeDetection{
         private Thread captureThread; 
         private bool isRunning = true; 
 
-    public override bool Init()
+   public override bool Init()
         {
-            capture = new VideoCapture(0);
-            if (!capture.IsOpened){
-                Console.WriteLine("Failed to open camera.");
+            try
+            {
+                capture = new VideoCapture(0);
+                if (!capture.IsOpened)
+                {
+                    CustomMessageBox.Show("Failed to open camera.", "Error");
+                    return false;
+                }
+                detector = new BarcodeDetector(new[] { BarCodeType.QR_CODE });
+                displayBox = new PictureBox
+                {
+                    SizeMode = PictureBoxSizeMode.StretchImage,
+                    Dock = DockStyle.Fill
+                };
+
+                MainV2.instance.BeginInvoke((MethodInvoker)delegate
+                {
+                    var tab = MainV2.instance.Controls.Find("FlightData", true).FirstOrDefault() as TabPage;
+                    if (tab != null)
+                        tab.Controls.Add(displayBox);
+                    else
+                        Console.WriteLine("FlightData tab not found.");
+                });
+
+                isRunning = true;
+                captureThread = new Thread(CaptureLoop) { IsBackground = true };
+                captureThread.Start();
+                return true;
+            }
+            catch (Exception ex)
+            {
+                CustomMessageBox.Show($"Initialization failed: {ex.Message}", "Error");
                 return false;
             }
-            detector = new BarcodeDetector(new[] { BarCodeType.QR_CODE });
-            displayBox = new PictureBox{
-                SizeMode = PictureBoxSizeMode.StretchImage,
-                Dock = DockStyle.Fill
-            };
-
-            // Add the PictureBox to MissionPlanner's UI (e.g., FlightData tab)
-            MainV2.instance.BeginInvoke((MethodInvoker)delegate
-            {
-                var tab = MainV2.instance.Controls.Find("FlightData", true)[0] as TabPage;
-                tab.Controls.Add(displayBox);
-            });
-
-            isRunning = true;
-            captureThread = new Thread(CaptureLoop)
-            {
-                IsBackground = true
-            };
-            captureThread.Start();
-            return true;
         }
     private void CaptureLoop()
         {
