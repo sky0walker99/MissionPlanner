@@ -15,58 +15,95 @@ namespace QRCodeDetection{
         public override string Name => "QR Code Detector";
         public override string Version => "1.0";
         public override string Author => "Your Name";
-
-        private VideoCapture capture; // EmguCV Class for VideoCapture
+        private VideoCapture capture; 
         private PictureBox displayBox;
-        private BarcodeDetector detector; // EmguCV Class for QRDetection
-        private Thread captureThread; // Thread for running video capture loop
+        private BarcodeDetector detector; 
+        private Thread captureThread; 
         private bool isRunning = true; 
-    public QRDetection(){
-    capture = new VideoCapture;
-    displayBox = new PictureBox{
 
-            SizeMode = PictureBoxSizeMode.StretchImage,
-            Dock = DockStyle.Fill
-    }
+    public override bool Init()
+        {
+            capture = new VideoCapture(0);
+            if (!capture.IsOpened){
+                Console.WriteLine("Failed to open camera.");
+                return false;
+            }
+            detector = new BarcodeDetector(new[] { BarCodeType.QR_CODE });
+            displayBox = new PictureBox{
+                SizeMode = PictureBoxSizeMode.StretchImage,
+                Dock = DockStyle.Fill
+            };
 
-    }
+            // Add the PictureBox to MissionPlanner's UI (e.g., FlightData tab)
+            MainV2.instance.BeginInvoke((MethodInvoker)delegate
+            {
+                var tab = MainV2.instance.Controls.Find("FlightData", true)[0] as TabPage;
+                tab.Controls.Add(displayBox);
+            });
+
+            isRunning = true;
+            captureThread = new Thread(CaptureLoop)
+            {
+                IsBackground = true
+            };
+            captureThread.Start();
+            return true;
+        }
     private void CaptureLoop()
         {
-            while (isRunning) // Continue while the plugin is running
+            while (isRunning)
             {
-                // Capture a frame from the camera
-                Mat frame = capture.QueryFrame();
-
-                if (frame != null) // Ensure a frame was captured
+                try
                 {
-                    // Detect and decode QR codes in the frame
+                    Mat frame = capture.QueryFrame();
+                    if (frame == null)
+                    {
+                        Thread.Sleep(100); 
+                        continue;
+                    }
                     VectorOfCvString codes = new VectorOfCvString();
                     VectorOfInt types = new VectorOfInt();
                     Mat points = new Mat();
                     detector.DetectAndDecode(frame, codes, types, points);
 
-                    // Optionally, draw rectangles around detected QR codes
                     for (int i = 0; i < points.Rows; i++)
                     {
-                        PointF[] point = points.GetArray(i);
-                        // You can use EmguCV drawing functions here, e.g., CvInvoke.Rectangle
+                        PointF[] pointArray = points.GetArray<PointF>(i);
+                        if (pointArray.Length >= 4)
+                        {
+                            for (int j = 0; j < pointArray.Length; j++)
+                            {
+                                CvInvoke.Line(frame, 
+                                    Point.Round(pointArray[j]), 
+                                    Point.Round(pointArray[(j + 1) % 4]), 
+                                    new MCvScalar(0, 255, 0), 2);
+                            }
+                            
+                            Console.WriteLine($"QR Code Detected: {codes[i].ToString()}");
+                        }
                     }
 
-                    // Update the PictureBox with the latest frame
-                    // Use BeginInvoke to ensure UI updates are on the main thread
+                    // Update the PictureBox on the UI thread
                     MainV2.instance.BeginInvoke((MethodInvoker)delegate
                     {
-                        displayBox.Image = frame.Bitmap;
+                        displayBox.Image?.Dispose(); // Dispose of the previous image
+                        displayBox.Image = frame.ToBitmap();
                     });
-                }
 
+                    Thread.Sleep(33);                 }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Error in capture loop: {ex.Message}");
+                }
             }
         }
         public override bool Exit()
         {
             isRunning = false;
-            captureThread.Join();
-            capture.Dispose();
+            captureThread.Join(1000);
+            capture?.Dispose();
+            detector?.Dispose();
+            displayBox?.Dispose();
             return true;
         }
     }
